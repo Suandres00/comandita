@@ -1,0 +1,15 @@
+# Dependencias (NUNCA se suben)
+node_modules/
+
+# Archivos de configuración local y secretos (NUNCA se suben)
+.env
+.env.local
+
+# Carpetas de compilación o producción (Opcional, según tu framework)
+dist/
+build/
+.next/
+
+# Archivos del sistema o del editor
+.DS_Store
+.vscode/
