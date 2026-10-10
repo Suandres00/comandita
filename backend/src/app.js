@@ -17,7 +17,9 @@ mongoose.connect(process.env.MONGO_URI)
 
 // importar rutas
 const pedidoRoutes = require('./routes/pedidoRoutes');
+const productosRoutes = require('./routes/productoRoutes');
 app.use('/api/pedidos', pedidoRoutes);
+app.use('/api/productos', productosRoutes);
 
 // ruta de prueba
 app.get('/', (req, res) => {

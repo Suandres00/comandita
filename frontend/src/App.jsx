@@ -2,29 +2,95 @@ import { useState, useEffect } from 'react';
 
 function App() {
   const [mesa, setMesa] = useState('');
-  const [plato, setPlato] = useState('');
+  const [cliente, setCliente] = useState('');
+  const [productos, setProductos] = useState([]);
+  const [seleccionados, setSeleccionados] = useState({}); // { productoId: cantidad }
   const [pedidos, setPedidos] = useState([]);
 
-  const obtenerPedidos = async () => {
+  // cargar productos (la carta) y pedidos activos al iniciar
+  const cargarDatos = async () => {
     try {
-      const respuesta = await fetch('http://localhost:4000/api/pedidos');
-      const datos = await respuesta.json();
-      setPedidos(datos);
+      const resProd = await fetch('http://localhost:4000/api/productos');
+      const dataProd = await resProd.json();
+      setProductos(dataProd);
+
+      const resPed = await fetch('http://localhost:4000/api/pedidos');
+      const dataPed = await resPed.json();
+      setPedidos(dataPed);
     } catch (error) {
-      console.error('error al cargar pedidos:', error);
+      console.error('error al cargar datos:', error);
     }
   };
 
   useEffect(() => {
-    const cargarDatos = async () => {
-      await obtenerPedidos();
+    let cancelado = false;
+
+    const cargarDatosIniciales = async () => {
+      try {
+        const resProd = await fetch('http://localhost:4000/api/productos');
+        const dataProd = await resProd.json();
+
+        if (!cancelado) {
+          setProductos(dataProd);
+        }
+
+        const resPed = await fetch('http://localhost:4000/api/pedidos');
+        const dataPed = await resPed.json();
+
+        if (!cancelado) {
+          setPedidos(dataPed);
+        }
+      } catch (error) {
+        if (!cancelado) {
+          console.error('error al cargar datos:', error);
+        }
+      }
     };
-    cargarDatos();
+
+    void cargarDatosIniciales();
+
+    return () => {
+      cancelado = true;
+    };
   }, []);
 
+  // manejar la cantidad de cada producto seleccionado
+  const manejarCantidad = (productoId, cantidad) => {
+    const cant = parseInt(cantidad) || 0;
+    setSeleccionados(prev => {
+      if (cant <= 0) {
+        const copia = { ...prev };
+        delete copia[productoId];
+        return copia;
+      }
+      return { ...prev, [productoId]: cant };
+    });
+  };
+
+  // calcular el subtotal o total en tiempo real para mostrar en pantalla
+  const calcularTotalPreview = () => {
+    let total = 0;
+    for (const [id, cantidad] of Object.entries(seleccionados)) {
+      const prod = productos.find(p => p._id === id);
+      if (prod) {
+        total += prod.precio * cantidad;
+      }
+    }
+    return total;
+  };
+
+  // enviar la comanda al backend
   const crearPedido = async (e) => {
     e.preventDefault();
-    if (!mesa || !plato) return;
+    if (!mesa || !cliente || Object.keys(seleccionados).length === 0) {
+      alert('completá la mesa, el cliente y elegí al menos un producto');
+      return;
+    }
+
+    const items = Object.entries(seleccionados).map(([productoId, cantidad]) => ({
+      productoId,
+      cantidad
+    }));
 
     try {
       const respuesta = await fetch('http://localhost:4000/api/pedidos', {
@@ -32,21 +98,23 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mesa: Number(mesa),
-          platos: [plato]
+          cliente,
+          items
         }),
       });
 
       if (respuesta.ok) {
         setMesa('');
-        setPlato('');
-        obtenerPedidos();
+        setCliente('');
+        setSeleccionados({});
+        cargarDatos();
       }
     } catch (error) {
       console.error('error al crear pedido:', error);
     }
   };
 
-  // función para cambiar el estado del pedido
+  // cambiar el estado del pedido
   const cambiarEstado = async (id, nuevoEstado) => {
     try {
       const respuesta = await fetch(`http://localhost:4000/api/pedidos/${id}`, {
@@ -56,7 +124,7 @@ function App() {
       });
 
       if (respuesta.ok) {
-        obtenerPedidos();
+        cargarDatos();
       }
     } catch (error) {
       console.error('error al cambiar estado:', error);
@@ -64,49 +132,86 @@ function App() {
   };
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto' }}>
-      <h1>Comandero de Restaurante</h1>
+    <div style={{ padding: '25px', fontFamily: 'sans-serif', maxWidth: '2500px', margin: 'auto' }}>
+      <h1>Comandita</h1>
 
-      {/* formulario */}
-      <form onSubmit={crearPedido} style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <input
-          type="number"
-          placeholder="número de mesa"
-          value={mesa}
-          onChange={(e) => setMesa(e.target.value)}
-          style={{ padding: '8px', fontSize: '16px' }}
-        />
-        <input
-          type="text"
-          placeholder="descripción del plato"
-          value={plato}
-          onChange={(e) => setPlato(e.target.value)}
-          style={{ padding: '8px', fontSize: '16px' }}
-        />
-        <button type="submit" style={{ padding: '10px', background: '#007bff', color: 'white', border: 'none', cursor: 'pointer', fontSize: '16px' }}>
-          enviar comanda
-        </button>
+      {/* formulario para nueva comanda */}
+      <form onSubmit={crearPedido} style={{ background: '#11121d', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+        <h3>Nueva Comanda</h3>
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+          <input
+            type="number"
+            placeholder="Nº de Mesa"
+            value={mesa}
+            onChange={(e) => setMesa(e.target.value)}
+            style={{ padding: '8px', flex: 1 }}
+          />
+          <input
+            type="text"
+            placeholder="Nombre del Cliente"
+            value={cliente}
+            onChange={(e) => setCliente(e.target.value)}
+            style={{ padding: '8px', flex: 2 }}
+          />
+        </div>
+
+        <h4>Carta / Menú</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '15px' }}>
+          {productos.map((prod) => (
+            <div key={prod._id} style={{ background: '#154f21', padding: '10px', border: '1px solid #020202', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <strong>{prod.nombre}</strong>
+                <br />
+                <small>${prod.precio} ({prod.categoria})</small>
+              </div>
+              <input
+                type="number"
+                min="0"
+                value={seleccionados[prod._id] || ''}
+                onChange={(e) => manejarCantidad(prod._id, e.target.value)}
+                placeholder="cant"
+                style={{ width: '50px', padding: '6px' }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <strong>Total estimado: ${calcularTotalPreview()}</strong>
+          <button type="submit" style={{ padding: '10px 20px', background: '#187be5', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '4px' }}>
+            Enviar Comanda
+          </button>
+        </div>
       </form>
 
-      {/* lista de pedidos */}
-      <h2>pedidos activos</h2>
+      {/* lista de pedidos activos */}
+      <h2>Pedidos Activos</h2>
       {pedidos.length === 0 ? (
-        <p>no hay pedidos cargados.</p>
+        <p>No hay pedidos cargados.</p>
       ) : (
         <ul>
           {pedidos.map((p) => (
-            <li key={p._id} style={{ background: '#f8f9fa', padding: '12px', marginBottom: '10px', border: '1px solid #ddd', borderRadius: '4px' }}>
+            <li key={p._id} style={{ background: '#2a3b4d', padding: '12px', marginBottom: '10px', border: '1px solid #ddd', borderRadius: '4px' }}>
               <div>
-                <strong>mesa {p.mesa}</strong> - {p.platos.join(', ')} 
+                <strong>Mesa {p.mesa}</strong> - Cliente: <strong>{p.cliente}</strong>
                 <br />
-                <em>estado: <strong>{p.estado}</strong></em>
+                <ul>
+                  {p.items.map((item, idx) => (
+                    <li key={idx}>
+                      {item.cantidad}x {item.producto ? item.producto.nombre : 'Producto eliminado'} (${item.producto ? item.producto.precio * item.cantidad : 0})
+                    </li>
+                  ))}
+                </ul>
+                <strong>Importe Total: ${p.total}</strong>
+                <br />
+                <em>Estado: <strong>{p.estado}</strong></em>
               </div>
               <div style={{ marginTop: '8px', display: 'flex', gap: '6px' }}>
-                <button onClick={() => cambiarEstado(p._id, 'en preparación')} style={{ padding: '4px 8px', background: '#cba741', border: 'none', cursor: 'pointer' }}>
-                  en preparación
+                <button onClick={() => cambiarEstado(p._id, 'en preparación')} style={{ padding: '4px 8px', background: '#ffc107', border: 'none', cursor: 'pointer' }}>
+                  En preparación
                 </button>
-                <button onClick={() => cambiarEstado(p._id, 'entregado')} style={{ padding: '4px 8px', background: '#1e7432', color: 'white', border: 'none', cursor: 'pointer' }}>
-                  entregado
+                <button onClick={() => cambiarEstado(p._id, 'entregado')} style={{ padding: '4px 8px', background: '#28a745', color: 'white', border: 'none', cursor: 'pointer' }}>
+                  Entregado
                 </button>
               </div>
             </li>
